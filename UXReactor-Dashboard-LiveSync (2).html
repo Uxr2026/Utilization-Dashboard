@@ -93,7 +93,7 @@ body{font-family:'Cambria',Georgia,serif;background:#f0f2f5;color:#111;font-size
   --gray:#888780;--glt2:#F1EFE8;--gdk2:#444441;
 }
 
-/* â”€â”€ Resource Gantt Chart â”€â”€ */
+/* ── Resource Gantt Chart ── */
 .gantt-wrap{background:var(--surf);border:1px solid var(--brd);border-radius:10px;overflow:hidden;font-size:11px}
 .gantt-header{display:flex;border-bottom:1px solid var(--brd);background:var(--surf2)}
 .gantt-label-col{flex:0 0 160px;min-width:160px;padding:7px 10px;font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;border-right:1px solid var(--brd)}
@@ -15530,7 +15530,7 @@ function selEmp(empName,row){
 }
 
 
-/* â”€â”€ Resource Gantt Chart â”€â”€ */
+/* ── Resource Gantt Chart ── */
 function renderEmpGantt(empName, projs) {
   var wrap = document.getElementById('emp-gantt-wrap');
   var cont = document.getElementById('emp-gantt');
@@ -16806,7 +16806,7 @@ function renderSummary(){
   }
   html+=`</div>`;
 
-  /* â”€â”€ Monthly Editorial Section â€” synced to top month filter â”€â”€ */
+  /* ── Monthly Editorial Section — synced to top month filter ── */
   const rec=window.PIPELINE_DATA||(window.PIPELINE_DATA={});
   if(!rec[selKey])rec[selKey]={exec:'',sales:'',hiring:''};
   const cur=rec[selKey];
@@ -20819,12 +20819,12 @@ function downloadEmpExcel() {
     if(typeof firebase === 'undefined'){
       if(window._fbLoadFailed){
         setStatus('☁ Cloud sync blocked (network/ad-blocker?)', '#c0392b');
-        console.warn('Firebase SDK scripts failed to load — check network/firewall/ad-blocker for cdnjs.cloudflare.com');
+        console.error('Firebase SDK failed to load: Check network, firewall, or ad-blocker blocking cdnjs.cloudflare.com');
         return;
       }
       if(attemptsLeft <= 0){
-        setStatus('☁ Cloud sync unavailable (SDK did not load)', '#c0392b');
-        console.warn('Firebase global was never defined after waiting — the SDK <script> tags likely failed to load.');
+        setStatus('☁ Cloud sync unavailable (SDK timeout)', '#c0392b');
+        console.error('Firebase SDK did not initialize after 6 seconds. Check: (1) Network connectivity (2) CORS settings (3) Firebase config validity');
         return;
       }
       setTimeout(function(){ initFirebase(attemptsLeft - 1); }, 300);
@@ -20835,8 +20835,8 @@ function downloadEmpExcel() {
       dbRef = firebase.database().ref(dbPath);
       startSync();
     } catch(e){
-      console.warn('Firebase init failed', e);
-      setStatus('☁ Cloud sync failed to initialize', '#c0392b');
+      console.error('Firebase initialization error: ' + (e.message || e), e);
+      setStatus('☁ Cloud sync init failed', '#c0392b');
     }
   }
 
@@ -20894,6 +20894,12 @@ function downloadEmpExcel() {
     try {
       var projectsObj = p.PROJECTS_PAIRS ? pairsToObj(p.PROJECTS_PAIRS) : (p.PROJECTS || null);
       var pipelineObj = p.PIPELINE_DATA_PAIRS ? pairsToObj(p.PIPELINE_DATA_PAIRS) : (p.PIPELINE_DATA || null);
+
+      /* Validate data before applying to prevent corruption */
+      if(p.DATA && !Array.isArray(p.DATA)) { console.warn('Invalid DATA format in remote update'); return; }
+      if(p.RESOURCES && !Array.isArray(p.RESOURCES)) { console.warn('Invalid RESOURCES format in remote update'); return; }
+      if(p.LOCATIONS && !Array.isArray(p.LOCATIONS)) { console.warn('Invalid LOCATIONS format in remote update'); return; }
+
       if(p.DATA && Array.isArray(p.DATA)){ DATA.length = 0; p.DATA.forEach(function(r){ DATA.push(mkRow(r)); }); }
       if(projectsObj){ Object.keys(PROJECTS).forEach(function(k){ delete PROJECTS[k]; }); Object.assign(PROJECTS, projectsObj); }
       if(p.RESOURCES && Array.isArray(p.RESOURCES)){ RESOURCES.length = 0; p.RESOURCES.forEach(function(e){ RESOURCES.push(e); }); }
@@ -20918,7 +20924,7 @@ function downloadEmpExcel() {
           LOCATIONS: p.LOCATIONS,
           PIPELINE_DATA: pipelineObj || {}
         }));
-      } catch(e){}
+      } catch(e){ console.warn('Failed to update localStorage', e); }
     } catch(e){ console.warn('Applying remote update failed', e); }
     finally { applyingRemote = false; }
   }
@@ -20940,16 +20946,24 @@ function downloadEmpExcel() {
       }
       applyRemote(val);
     }, function(err){
-      console.warn('Cloud listener error', err);
-      setStatus('☁ Cloud sync error (check Firebase rules)', '#c0392b');
+      console.error('Firebase listener error: ' + (err.message || err) + '. Check Firebase security rules allow reads for path: ' + dbPath, err);
+      setStatus('☁ Sync error (check Firebase rules & permissions)', '#c0392b');
     });
 
     /* Piggyback on the existing autoSave function: every time the dashboard
        saves locally, also push to the cloud. */
     var _origAutoSave = window.autoSave;
     window.autoSave = function(){
-      if(typeof _origAutoSave === 'function') _origAutoSave.apply(this, arguments);
-      pushToCloud();
+      try {
+        if(typeof _origAutoSave === 'function') _origAutoSave.apply(this, arguments);
+      } catch(e){
+        console.warn('autoSave failed', e);
+      }
+      try {
+        pushToCloud();
+      } catch(e){
+        console.warn('pushToCloud failed', e);
+      }
     };
   }
 
