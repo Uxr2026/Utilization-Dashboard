@@ -355,15 +355,6 @@ textarea{min-height:110px;resize:vertical;font-family:monospace;font-size:11px}
       <button onclick="closeAdminLock()" style="flex:1;padding:10px;background:#ccc;color:#333;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:14px">Cancel</button>
     </div>
     <div id="pw-error" style="color:#E24B4A;font-size:12px;display:none;margin-bottom:10px;text-align:center"></div>
-    <hr style="border:none;border-top:1px solid #e2e5ea;margin:15px 0">
-    <button onclick="document.getElementById('pw-change-form').style.display=document.getElementById('pw-change-form').style.display==='none'?'block':'none'" style="width:100%;padding:10px;background:#f0f2f5;color:#111;border:1px solid #e2e5ea;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px">Change Password</button>
-    <div id="pw-change-form" style="display:none;margin-top:15px;padding-top:15px;border-top:1px solid #e2e5ea">
-      <p style="font-size:12px;color:#555;margin:0 0 10px 0">Set new password:</p>
-      <input type="password" id="pw-new" placeholder="New password" style="width:100%;padding:10px 12px;border:1px solid #e2e5ea;border-radius:6px;font-size:14px;margin-bottom:10px;box-sizing:border-box">
-      <input type="password" id="pw-confirm" placeholder="Confirm password" style="width:100%;padding:10px 12px;border:1px solid #e2e5ea;border-radius:6px;font-size:14px;margin-bottom:10px;box-sizing:border-box">
-      <button onclick="updateAdminPassword()" style="width:100%;padding:10px;background:#639922;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px">Update Password</button>
-      <div id="pw-change-status" style="font-size:12px;margin-top:8px;text-align:center"></div>
-    </div>
   </div>
 </div>
 
@@ -1065,12 +1056,15 @@ textarea{min-height:110px;resize:vertical;font-family:monospace;font-size:11px}
 </div>
 <div id="pg-data" class="pg">
   <div class="editor-wrap">
-    <div class="etabs">
-      <button class="etab" onclick="showEtab('util-data',this)">Utilization data</button>
-      <button class="etab" onclick="showEtab('emp-master',this)">Resources</button><button class="etab" onclick="showEtab('proj-data',this)">Projects</button>
-      
-      <button class="etab" onclick="showEtab('locations',this)">Locations</button>
-      <button class="etab on" onclick="showEtab('export',this)">Export &amp; save</button>
+    <div class="etabs" style="display:flex;align-items:center;justify-content:space-between;gap:0">
+      <div style="display:flex;gap:0">
+        <button class="etab" onclick="showEtab('util-data',this)">Utilization data</button>
+        <button class="etab" onclick="showEtab('emp-master',this)">Resources</button><button class="etab" onclick="showEtab('proj-data',this)">Projects</button>
+
+        <button class="etab" onclick="showEtab('locations',this)">Locations</button>
+        <button class="etab on" onclick="showEtab('export',this)">Export &amp; save</button>
+      </div>
+      <button class="btn-s" onclick="togglePwChangeForm()" style="margin-right:10px;padding:6px 14px;font-size:12px;height:fit-content">🔐 Change Password</button>
     </div>
 
     <!-- UTILIZATION DATA -->
