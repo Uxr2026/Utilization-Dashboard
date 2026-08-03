@@ -328,6 +328,14 @@ textarea{min-height:110px;resize:vertical;font-family:monospace;font-size:11px}
 .lock-box{background:var(--surf);border-radius:14px;padding:28px 32px;width:320px;box-shadow:0 8px 32px rgba(0,0,0,.2)}
 .lock-title{font-size:16px;font-weight:700;margin-bottom:4px}
 .lock-sub{font-size:12px;color:var(--tx3);margin-bottom:16px}
+/* Finance data hide/show toggle switch */
+.fin-switch{position:relative;display:inline-block;width:38px;height:21px;flex:0 0 auto}
+.fin-switch input{opacity:0;width:0;height:0}
+.fin-slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background-color:#cbd5e1;transition:.2s;border-radius:21px}
+.fin-slider:before{position:absolute;content:"";height:15px;width:15px;left:3px;bottom:3px;background-color:#fff;transition:.2s;border-radius:50%;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.fin-switch input:checked + .fin-slider{background-color:#E24B4A}
+.fin-switch input:checked + .fin-slider:before{transform:translateX(17px)}
+.fin-switch input:focus + .fin-slider{box-shadow:0 0 0 2px rgba(55,138,221,.35)}
 .lock-err{font-size:11px;color:var(--rdk);margin-top:6px;display:none}
 /* Search & filter bar for resource table */
 .emp-toolbar{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
@@ -397,6 +405,13 @@ textarea{min-height:110px;resize:vertical;font-family:monospace;font-size:11px}
   <div class="sl-g" style="display:none"><span class="sl-l">Project</span>
     <select id="sl-pr" onchange="window.applyF()"><option value="all">All projects</option><option value="Arlo">Arlo</option><option value="CSM (ServiceNow)">CSM (ServiceNow)</option><option value="CWAN">CWAN</option><option value="CWAN -2">CWAN -2</option><option value="Carnival">Carnival</option><option value="DSG">DSG</option><option value="DSG 2">DSG 2</option><option value="Deloitte">Deloitte</option><option value="Experian">Experian</option><option value="HP">HP</option><option value="KPMG">KPMG</option><option value="MariaDB">MariaDB</option><option value="Microsoft">Microsoft</option><option value="NVIDIA - Onboarding Journey">NVIDIA - Onboarding Journey</option><option value="NVIDIA -CPQ">NVIDIA -CPQ</option><option value="Precisely 2">Precisely 2</option><option value="Provation">Provation</option><option value="Provation 2">Provation 2</option><option value="RWJF">RWJF</option><option value="SCA (Specialty Coffee Association)">SCA (Specialty Coffee Association)</option><option value="SCA (Specialty Coffee Association) -2">SCA (Specialty Coffee Association) -2</option><option value="SN AICT">SN AICT</option><option value="SN NVIDIA">SN NVIDIA</option><option value="SN UX Design Support">SN UX Design Support</option><option value="SN UX Design Support 2">SN UX Design Support 2</option><option value="SN UXQ Australia">SN UXQ Australia</option><option value="Second Round">Second Round</option><option value="Service &amp; Salesforce heuristic analysis">Service &amp; Salesforce heuristic analysis</option><option value="Service Minder">Service Minder</option><option value="Service Minder -2">Service Minder -2</option><option value="ServiceNow BHP">ServiceNow BHP</option><option value="TransUnion">TransUnion</option><option value="Trust3.ai -1">Trust3.ai -1</option><option value="Trust3.ai -2">Trust3.ai -2</option><option value="WADOT (WaTech)">WADOT (WaTech)</option><option value="Well SKy">Well SKy</option><option value="Well SKy - 2">Well SKy - 2</option><option value="Zoom">Zoom</option><option value="ZwickRoell">ZwickRoell</option></select></div>
   <button class="rbtn" onclick="window.resetF()"> Reset</button>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:8px" title="When ON, Bill Rate / Pay Rate / totals are masked everywhere except Edit Data">
+    <span id="finance-toggle-label" style="font-size:11px;font-weight:700;color:var(--tx2);white-space:nowrap">🔒 Hide Finance Data</span>
+    <label class="fin-switch">
+      <input type="checkbox" id="finance-data-toggle" checked onchange="onFinanceToggleChange(this)">
+      <span class="fin-slider"></span>
+    </label>
+  </div>
 </div>
 
 <!-- UTILIZATION PAGE -->
@@ -14963,6 +14978,108 @@ function bwEmpActiveInPeriod(name,windows){
 /* PASSWORD PROTECTION FOR EDIT DATA */
 window.adminPassword = localStorage.getItem('uxr_admin_password') || 'UXReactor@123';
 window.isAdminUnlocked = false;
+window.financeDataVisible = false;
+
+const financeTextOriginals = new WeakMap();
+
+function financeFmtCurrency(v){
+  if(!window.financeDataVisible) return '****';
+  if(v==null||v===''||isNaN(Number(v))) return '–';
+  return '$'+Math.round(Number(v)).toLocaleString();
+}
+
+function financeFmtRate(v){
+  if(!window.financeDataVisible) return '****';
+  if(v==null||v===''||isNaN(Number(v))) return '–';
+  return '$'+Number(v).toLocaleString(undefined,{maximumFractionDigits:0})+'/hr';
+}
+
+function applyFinanceMaskToVisibleText(root){
+  const scope=root||document;
+  const editDataEl=document.getElementById('pg-data');
+  const walker=document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, null);
+  const skipTags=new Set(['SCRIPT','STYLE','INPUT','TEXTAREA','SELECT','OPTION']);
+  while(walker.nextNode()){
+    const node=walker.currentNode;
+    const parent=node.parentElement;
+    if(!parent||skipTags.has(parent.tagName)) continue;
+    /* Edit Data tab always shows real values, regardless of the finance toggle */
+    if(editDataEl && editDataEl.contains(parent)){
+      const stored0=financeTextOriginals.get(node);
+      if(stored0!=null){ node.nodeValue=stored0; financeTextOriginals.delete(node); }
+      continue;
+    }
+    if(!node.nodeValue) continue;
+    const value=node.nodeValue;
+    const hasFinancePattern=/\$\s*[\d,]+(?:\.\d+)?(?:\s*\/hr)?/.test(value);
+    if(!hasFinancePattern) continue;
+    if(window.financeDataVisible){
+      const original=financeTextOriginals.get(node);
+      if(original!=null) node.nodeValue=original;
+      continue;
+    }
+    const stored=financeTextOriginals.get(node);
+    if(stored==null) financeTextOriginals.set(node, value);
+    node.nodeValue=value.replace(/\$\s*[\d,]+(?:\.\d+)?(?:\s*\/hr)?/g,'****');
+  }
+}
+
+function updateFinanceToggleUI(){
+  const cb=document.getElementById('finance-data-toggle');
+  const label=document.getElementById('finance-toggle-label');
+  if(cb) cb.checked = !window.financeDataVisible;
+  if(label) label.textContent = window.financeDataVisible ? '🔓 Finance Data Visible' : '🔒 Hide Finance Data';
+  applyFinanceMaskToVisibleText(document);
+}
+
+/* Toggle ON (checked) = finance data HIDDEN/masked everywhere except Edit Data.
+   Toggle OFF (unchecked) = reveal real values; requires the admin password. */
+function toggleFinanceData(){
+  if(window.financeDataVisible){
+    window.financeDataVisible=false;
+    updateFinanceToggleUI();
+    if(typeof window.renderAll==='function')window.renderAll();
+    return;
+  }
+  const pw=window.prompt('Enter password to show finance data');
+  if(pw===null)return;
+  if(pw===window.adminPassword){
+    window.financeDataVisible=true;
+    updateFinanceToggleUI();
+    if(typeof window.renderAll==='function')window.renderAll();
+  } else {
+    window.alert('Incorrect password');
+  }
+}
+
+function onFinanceToggleChange(cb){
+  if(cb.checked){
+    /* User switched it ON -> hide finance data immediately, no password needed to hide */
+    window.financeDataVisible=false;
+    updateFinanceToggleUI();
+    if(typeof window.renderAll==='function')window.renderAll();
+    return;
+  }
+  /* User switched it OFF -> wants to reveal finance data, require password */
+  cb.checked=true; /* keep it visually ON/hidden until the password is confirmed */
+  const pw=window.prompt('Enter password to show finance data');
+  if(pw===null) return; /* cancelled - stays hidden */
+  if(pw===window.adminPassword){
+    window.financeDataVisible=true;
+    updateFinanceToggleUI();
+    if(typeof window.renderAll==='function')window.renderAll();
+  } else {
+    window.alert('Incorrect password');
+  }
+}
+
+window.toggleFinanceData = toggleFinanceData;
+window.onFinanceToggleChange = onFinanceToggleChange;
+window.updateFinanceToggleUI = updateFinanceToggleUI;
+window.financeFmtCurrency = financeFmtCurrency;
+window.financeFmtRate = financeFmtRate;
+window.applyFinanceMaskToVisibleText = applyFinanceMaskToVisibleText;
+applyFinanceMaskToVisibleText(document); /* mask immediately so nothing flashes real values before re-render */
 
 function openManageData(btn){
   if(!window.isAdminUnlocked){
@@ -15114,16 +15231,7 @@ document.addEventListener('DOMContentLoaded',function(){
   /* Ensure password modal is hidden on page load */
   const pwModal=document.getElementById('pw-modal');
   if(pwModal)pwModal.style.display='none';
-});
-
-/*  FILTER SYSTEM  */
-function populateSlicers(){
-  const allMo=[...new Set(DATA.map(d=>d.month))].sort(moSort);
-  const sl=document.getElementById('sl-mo');
-  while(sl.options.length>1)sl.remove(1);
-  allMo.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sl.appendChild(o);});
-
-  // Populate week dropdown - sorted Week 1 .. Week 5
+  updateFinanceToggleUI();
   const wkSl=document.getElementById('sl-wk');
   if(wkSl){
     while(wkSl.options.length>1)wkSl.remove(1);
@@ -15142,7 +15250,7 @@ function populateSlicers(){
   fill('sl-pr',[...new Set(DATA.map(d=>d.project))].filter(p=>!isBench(p)).sort());
   populateAutocomplete();
   updatePeriodLabel();
-}
+});
 
 function getFD(){
   return DATA.filter(d=>{
@@ -15708,7 +15816,7 @@ function selEmp(empName,row){
     const typeBadgeV1=isSOWV1
       ?`<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--plt);color:var(--pdk);margin-left:6px">${engAllocV1} SOW</span>`
       :`<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--tlt);color:var(--tdk);margin-left:6px">${engAllocV1} Internal</span>`;
-    const brV1=empEngV1.billRate?`<div style="font-size:10px;color:var(--tx3)">Bill rate: <strong>$${empEngV1.billRate}/hr</strong></div>`:'';
+    const brV1=empEngV1.billRate?`<div style="font-size:10px;color:var(--tx3)">Bill rate: <strong>${financeFmtRate(empEngV1.billRate)}</strong></div>`:'';
     return`<div class="tcard"><div class="av" style="background:${AVBG[ci]};color:${AVTX[ci]}">${p.proj.slice(0,2).toUpperCase()}</div>
       <div class="ti"><div class="tn">${p.proj}${typeBadgeV1}</div>
       <div class="tr2">${pi.billing||''}</div>
@@ -16006,7 +16114,7 @@ function selProj(pname,row){
     const ci=m.idx%AVBG.length;
     const role=[m.em.expertise,m.em.level,m.em.location].filter(Boolean).join(' - ')||'-';
     const billRate=m.engagements.find(eg=>eg.billRate)?.billRate;
-    const billRateHtml=billRate?`<div class="proj-member-role">Bill rate: <strong>$${escHtml(billRate)}/hr</strong></div>`:'';
+    const billRateHtml=billRate?`<div class="proj-member-role">Bill rate: <strong>${financeFmtRate(billRate)}</strong></div>`:'';
     // Render one date+alloc row per engagement entry so multiple ranges are all shown
     const engRows=m.engagements.length>0?m.engagements.map(eg=>{
       const s=projFmtEngDate(eg.start||pi.start||'')||'-';
@@ -16327,7 +16435,7 @@ function renderEngTbl(){
         <td style="padding:6px 10px;font-size:10px;color:var(--tx3)">${r.start?'Needed by '+r.start:'–'}</td>
         <td style="padding:6px 10px;font-size:10px;color:var(--tx3)">${r.level||'–'}</td>
         <td style="padding:6px 10px;color:var(--tx2)">${r.location||'–'}</td>
-        <td style="padding:6px 10px;font-weight:700;color:#92400E">${r.billRate?'$'+r.billRate+'/hr':'–'}</td>
+        <td style="padding:6px 10px;font-weight:700;color:#92400E">${r.billRate?('$'+r.billRate+'/hr'):'–'}</td>
         <td style="padding:6px 10px"><span style="background:#FEE2E2;color:#991B1B;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px">TO HIRE</span></td>
         <td style="padding:6px 10px;display:flex;gap:4px"><button class="btn-e" onclick="editEngRow(${i})">Edit</button><button class="del-btn" onclick="removeEngRow(${i})">Remove</button></td>
       </tr>`;
@@ -16346,7 +16454,7 @@ function renderEngTbl(){
       <td style="padding:6px 10px;font-weight:700">${r.alloc||'–'}%</td>
       <td style="padding:6px 10px">${r.start||'–'}</td>
       <td style="padding:6px 10px">${r.end||'<span style="color:var(--tx3)">Active</span>'}</td>
-      <td style="padding:6px 10px;font-weight:700;color:var(--blue)">${r.billRate?'$'+r.billRate+'/hr':'–'}</td>
+      <td style="padding:6px 10px;font-weight:700;color:var(--blue)">${r.billRate?('$'+r.billRate+'/hr'):'–'}</td>
       <td style="padding:6px 10px">${status}</td>
       <td style="padding:6px 10px;display:flex;gap:4px">${editBtn}<button class="del-btn" onclick="removeEngRow(${i})">Remove</button></td>
     </tr>`;
@@ -16445,7 +16553,7 @@ function renderProjEdTbl(){
             const typCol=e.type==='SOW'?'var(--pdk)':'var(--tdk)';
             const typeTag=`<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;background:${typBg};color:${typCol}">${e.type||'Internal'}</span>`;
             const allocTag=e.alloc?` <span style="font-size:9px;font-weight:700">${e.alloc}%</span>`:'';
-            const brTag=e.billRate?` <span style="font-size:9px;color:var(--tx3)">($${e.billRate}/hr)</span>`:'';
+            const brTag=e.billRate?` <span style="font-size:9px;color:var(--tx3)">(${financeFmtRate(e.billRate)})</span>`:'';
             const expTag=e.expertise?` <span style="font-size:9px;color:var(--tx3);font-style:italic">${e.expertise}</span>`:'';
             return`<div style="font-size:10px;color:${col}"> ${e.name} ${typeTag}${allocTag}${brTag}${expTag}${e.end?' -> '+e.end:' (active)'}</div>`;
           }).join('')
@@ -16596,7 +16704,7 @@ function renderEmpEdTbl(){
     <tbody>${RESOURCES.map((e,i)=>`<tr><td style="font-weight:600">${e.name}</td><td>${e.designation||'-'}</td><td>${e.empType||'-'}</td>
       <td>${e.expertise||'-'}</td><td>${e.level||'-'}</td><td>${e.location||'-'}</td>
       <td>${e.doj||'-'}</td><td>${e.doe||'-'}</td><td>${e.billable||'-'}</td>
-      <td style="font-size:11px">${e.email||'-'}</td><td>$${e.billRate||'0'}/hr</td>
+      <td style="font-size:11px">${e.email||'-'}</td><td>${financeFmtRate(e.billRate||'')}</td>
       <td style="display:flex;gap:4px">
         <button class="btn-e" onclick="editEmp('${e.name.replace(/'/g,"\\'")}')">Edit</button>
         <button class="del-btn" onclick="delEmp(${i})">Del</button>
@@ -16923,8 +17031,8 @@ function renderSummary(){
       <td style="white-space:nowrap;color:var(--tx3)">${r.project}</td>
       <td style="white-space:nowrap">${r.onboardDate?cogsFmtDate(r.onboardDate):'–'}</td>
       <td style="white-space:nowrap">${r.offboardDate?cogsFmtDate(r.offboardDate):'–'}</td>
-      <td style="font-weight:600;color:var(--tx3)">$${r.payRate||'0'}/hr</td>
-      <td style="font-weight:700;color:var(--blue)">${r.hrNum?'$'+r.hrNum+'/hr':'–'}</td>
+      <td style="font-weight:600;color:var(--tx3)">${r.payRate?financeFmtRate(r.payRate):'–'}</td>
+      <td style="font-weight:700;color:var(--blue)">${r.hrNum?financeFmtRate(r.hrNum):'–'}</td>
       <td style="text-align:center">${r.alloc}%</td>
       <td style="text-align:center"><input type="number" class="cogs-hours-input" min="0" max="${cogsHoursCap}" step="1" value="${effHours}" data-key="${cogsKeyAttr}" data-hrnum="${r.hrNum}" data-alloc="${r.alloc}" style="width:56px;padding:3px 6px;border:1px solid var(--brd2);border-radius:5px;font-size:12px;text-align:center;background:var(--surf2);color:var(--tx)" onchange="updateCogsHours(this)" onclick="event.stopPropagation()"/></td>
       <td style="font-weight:700;color:var(--teal)">${fmtUSD(effGt)}</td>
@@ -16995,7 +17103,7 @@ function renderSummary(){
   html+=`<div class="cc" style="margin-bottom:10px">`;
   html+=sh('Hiring Pipeline',openRoles.length?`${openRoles.length} open role${openRoles.length>1?'s':''} to fill`:'no open roles logged');
   if(openRoles.length){
-    html+=`<div class="tw"><table style="width:100%"><thead><tr><th>Role / Label</th><th>Expertise</th><th>Level</th><th>Project</th><th>Owner</th><th>Needed By</th><th>Location</th><th>Pay Rate</th><th>Bill Rate</th><th>Status</th></tr></thead><tbody>${openRoles.map(r=>`<tr><td style="font-weight:600">${r.name}</td><td><span class="pill pa_">${r.expertise||'–'}</span></td><td>${r.level||'–'}</td><td style="font-weight:600">${r.project}</td><td style="color:var(--tx3)">${r.owner}</td><td style="color:var(--tx3)">${r.start||'–'}</td><td>${r.location||'–'}</td><td style="font-weight:600;color:var(--tx3)">${r.payRate?'$'+r.payRate+'/hr':'–'}</td><td style="font-weight:700">${r.billRate?'$'+r.billRate+'/hr':'–'}</td><td><span class="pill pr_">TO HIRE</span></td></tr>`).join('')}</tbody></table></div>`;
+    html+=`<div class="tw"><table style="width:100%"><thead><tr><th>Role / Label</th><th>Expertise</th><th>Level</th><th>Project</th><th>Owner</th><th>Needed By</th><th>Location</th><th>Pay Rate</th><th>Bill Rate</th><th>Status</th></tr></thead><tbody>${openRoles.map(r=>`<tr><td style="font-weight:600">${r.name}</td><td><span class="pill pa_">${r.expertise||'–'}</span></td><td>${r.level||'–'}</td><td style="font-weight:600">${r.project}</td><td style="color:var(--tx3)">${r.owner}</td><td style="color:var(--tx3)">${r.start||'–'}</td><td>${r.location||'–'}</td><td style="font-weight:600;color:var(--tx3)">${r.payRate?financeFmtRate(r.payRate):'–'}</td><td style="font-weight:700">${r.billRate?financeFmtRate(r.billRate):'–'}</td><td><span class="pill pr_">TO HIRE</span></td></tr>`).join('')}</tbody></table></div>`;
     html+=`<div class="bw-note" style="margin-top:8px"><strong>Add open roles:</strong> <strong>Edit Data &rarr; Projects</strong> &rarr; open a project &rarr; switch to <strong>Open Role (To Hire)</strong>.</div>`;
   } else {
     html+=`<div class="bw-note" style="border-left-color:var(--green);background:var(--glt);color:var(--gdk)">No open roles yet. Use <strong>Edit Data &rarr; Projects</strong> &rarr; open a project &rarr; switch to <strong>Open Role (To Hire)</strong> to log hiring needs.</div>`;
@@ -17244,20 +17352,33 @@ function dlFile(name,content,type){
 
 /* INIT */
 function renderAll(){renderUtil();renderBw();renderEmp();renderProj();renderSummary();}
-populateSlicers();
-/* Auto-select the current month so the dashboard always opens on today's month */
-(function(){
-  const today=new Date();
-  const MO_ABBR3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const curLabel=MO_ABBR3[today.getMonth()]+'-'+String(today.getFullYear()).slice(-2);
-  const sl=document.getElementById('sl-mo');
-  if(sl){
-    const match=[...sl.options].find(o=>o.value===curLabel);
-    if(match){sl.value=curLabel;F.mo=curLabel;}
-  }
-})();
-updatePeriodLabel();
-renderAll();
+window.renderAll = renderAll;
+/* Deferred to window 'load' so this always runs AFTER every later <script> block
+   has finished defining/overriding populateSlicers, renderBw, renderEmp, etc.
+   Calling these synchronously here (before those later scripts run) is what
+   caused "populateSlicers is not defined" and the DOM errors that followed
+   from renderAll() never completing. */
+function __initDashboardOnLoad(){
+  if(typeof window.populateSlicers==='function') window.populateSlicers();
+  /* Auto-select the current month so the dashboard always opens on today's month */
+  (function(){
+    const today=new Date();
+    const MO_ABBR3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const curLabel=MO_ABBR3[today.getMonth()]+'-'+String(today.getFullYear()).slice(-2);
+    const sl=document.getElementById('sl-mo');
+    if(sl){
+      const match=[...sl.options].find(o=>o.value===curLabel);
+      if(match){sl.value=curLabel;F.mo=curLabel;}
+    }
+  })();
+  if(typeof updatePeriodLabel==='function') updatePeriodLabel();
+  if(typeof window.renderAll==='function') window.renderAll();
+}
+if(document.readyState==='complete'){
+  __initDashboardOnLoad();
+} else {
+  window.addEventListener('load', __initDashboardOnLoad);
+}
 </script>
 
 <script>
@@ -17813,7 +17934,7 @@ renderAll();
       const typBadge2=isSOWC2
         ?'<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--plt);color:var(--pdk);margin-left:6px">'+engAllocC2+' SOW</span>'
         :'<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--tlt);color:var(--tdk);margin-left:6px">'+engAllocC2+' Internal</span>';
-      const brStr2=empEng2.billRate?'<div class="tr2" style="font-size:10px;color:var(--tx3)">Bill rate: <strong style="color:var(--tx)">$'+empEng2.billRate+'/hr</strong></div>':'';
+      const brStr2=empEng2.billRate?'<div class="tr2" style="font-size:10px;color:var(--tx3)">Bill rate: <strong style="color:var(--tx)">'+financeFmtRate(empEng2.billRate)+'</strong></div>':'';
       const engDateStr2=(empEng2.start||empEng2.end)?'<div class="tr2">Start: <strong>'+fmtAnyDate(empEng2.start||pi.start)+'</strong>  -  End: <strong>'+fmtAnyDate(empEng2.end||pi.end)+'</strong></div>':'<div class="tr2">Start: <strong>'+fmtAnyDate(pi.start)+'</strong>  -  End: <strong>'+fmtAnyDate(pi.end)+'</strong></div>';
       return '<div class="tcard"><div class="av" style="background:'+colorBg(i)+';color:'+colorTx(i)+'">'+esc(p.proj.slice(0,2).toUpperCase())+'</div><div class="ti"><div class="tn">'+esc(p.proj)+typBadge2+'</div><div class="tr2">'+val(pi.billing)+'</div>'+engDateStr2+brStr2+'<div style="height:4px;background:var(--surf2);border-radius:2px;margin-top:4px"><div style="height:100%;background:'+c+';border-radius:2px;width:'+pc+'%"></div></div></div></div>';
     }).join('');
@@ -17904,7 +18025,7 @@ renderAll();
       const eng = engs[0] || {};
       const ini = String(name).split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
       const computed = a && a.n ? pct(a.b/a.n) : 0;
-      const brHtml2 = eng.billRate ? '<div class="tr2" style="color:var(--tx3);font-size:10px">Bill rate: <strong style="color:var(--tx)">$'+eng.billRate+'/hr</strong></div>' : '';
+      const brHtml2 = eng.billRate ? '<div class="tr2" style="color:var(--tx3);font-size:10px">Bill rate: <strong style="color:var(--tx)">'+financeFmtRate(eng.billRate)+'</strong></div>' : '';
       // Render one date+alloc chip per engagement so multiple ranges all show
       var dateChips = engs.length > 0 ? engs.map(function(eg){
         var s = fmtAnyDate(eg.start || pi.start) || '-';
@@ -18032,7 +18153,7 @@ renderAll();
     F={mo:'all',wk:'all',qtr:'all',ex:'all',lv:'all',loc:'all',pr:'all'};
     updatePeriodLabel(); renderAll();
   };
-  window.renderAll = function(){ renderUtil(); renderBw(); renderEmp(); renderProj(); if(typeof renderSummary==='function')renderSummary(); };
+  window.renderAll = function(){ renderUtil(); renderBw(); renderEmp(); renderProj(); if(typeof renderSummary==='function')renderSummary(); applyFinanceMaskToVisibleText(document); };
   /* expose helpers needed by consolidated-emp-fix script */
   window._pct = pct;
   window._avg = avg;
@@ -18043,6 +18164,7 @@ renderAll();
   populateSlicers();
   renderAll();
   renderEmpEdTbl();
+  applyFinanceMaskToVisibleText(document);
 })();
 </script>
 
@@ -18227,7 +18349,7 @@ renderAll();
       var typBadgeB=isSOWB
         ?'<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--plt);color:var(--pdk);margin-left:6px">'+engAllocB+' SOW</span>'
         :'<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--tlt);color:var(--tdk);margin-left:6px">'+engAllocB+' Internal</span>';
-      var brStrB=engB.billRate?'<div style="font-size:10px;color:var(--tx3)">Bill rate: <strong style="color:var(--tx)">$'+engB.billRate+'/hr</strong></div>':'';
+      var brStrB=engB.billRate?'<div style="font-size:10px;color:var(--tx3)">Bill rate: <strong style="color:var(--tx)">'+financeFmtRate(engB.billRate)+'</strong></div>':'';
       return '<div class="tcard"><div class="av" style="background:'+AVBG2[ci]+';color:'+AVTX2[ci]+'">'+esc2(p.proj.slice(0,2).toUpperCase())+'</div>'
         + '<div class="ti" style="min-width:0;flex:1">'
         + '<div class="tn" style="font-size:12px;font-weight:700">'+esc2(p.proj)+typBadgeB+'</div>'
@@ -19142,11 +19264,38 @@ function deleteAllProjects(){
     showMsg('import-proj-status','Done: '+added+' projects added, '+updated+' updated, '+mapped+' resource allocation rows mapped.',true);
   };
 
+  /* When "today" falls in a week/month that isn't present in the underlying
+     DATA set (e.g. the synthetic dataset only goes up to a certain week and
+     the real calendar has since moved past it), fall back to the most recent
+     week/month that DOES exist instead of silently returning zero results. */
+  function resolveAsOfPeriod(todayMo,todayWk){
+    var src=(typeof DATA!=='undefined'?DATA:[]);
+    var hasExact=src.some(function(r){return r.month===todayMo&&r.week===todayWk;});
+    if(hasExact)return {month:todayMo,week:todayWk};
+    function wkNum(w){return parseInt(String(w).replace(/\D/g,''),10)||0;}
+    var weeksInMo=src.filter(function(r){return r.month===todayMo;}).map(function(r){return r.week;});
+    if(weeksInMo.length){
+      var best=weeksInMo.reduce(function(a,b){return wkNum(b)>wkNum(a)?b:a;});
+      return {month:todayMo,week:best};
+    }
+    if(src.length){
+      var moOrder=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      function moKey(m){var p=String(m).split('-');return (parseInt(p[1],10)||0)*100+moOrder.indexOf(p[0]);}
+      var lastMo=src.reduce(function(a,b){return moKey(b.month)>moKey(a.month)?b:a;}).month;
+      var weeks2=src.filter(function(r){return r.month===lastMo;}).map(function(r){return r.week;});
+      var best2=weeks2.reduce(function(a,b){return wkNum(b)>wkNum(a)?b:a;});
+      return {month:lastMo,week:best2};
+    }
+    return {month:todayMo,week:todayWk};
+  }
+
   window.renderBw=function(){
     var todayDate=new Date();todayDate.setHours(0,0,0,0);
     var todayMo=moLabelFromDate(todayDate), todayWk=weekLabelFromDate(todayDate);
     var fd;
     if(bwAsOf){
+      var asOfPeriod=resolveAsOfPeriod(todayMo,todayWk);
+      todayMo=asOfPeriod.month; todayWk=asOfPeriod.week;
       fd=(typeof DATA!=='undefined'?DATA:[]).filter(function(d){
         if(d.month!==todayMo)return false;
         if(d.week!==todayWk)return false;
@@ -19258,7 +19407,7 @@ function deleteAllProjects(){
     var showingSuffix=bwEngType+(bwAsOf?', as of today':'');
     mkKpis('bw-kpis',[{l:'Fully available',v:source.filter(function(e){return Math.round(e.bwFree*100)>=99;}).length,s:'>=99% free',c:'g'},{l:'Partially available',v:source.filter(function(e){var v=Math.round(e.bwFree*100);return v>0&&v<99;}).length,s:'>0% free',c:'a'},{l:'Fully committed',v:source.filter(function(e){return Math.round(e.bwFree*100)<=0;}).length,s:'0% free',c:'r'},{l:'Showing',v:filtered.length,s:'of '+source.length+' ('+showingSuffix+')',c:'b'}]);
     var grid=document.getElementById('bw-grid'), old=document.getElementById('bw-emp-dp');if(old)old.remove();if(!grid)return;grid.innerHTML='';
-    var todayLabel=(function(){var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return String(todayDate.getDate()).padStart(2,'0')+'-'+mo[todayDate.getMonth()]+'-'+String(todayDate.getFullYear()).slice(-2);})();
+    var todayLabel=(bwEngType!=='sow'&&(todayMo!==moLabelFromDate(todayDate)||todayWk!==weekLabelFromDate(todayDate)))?(todayMo+', '+todayWk):(function(){var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return String(todayDate.getDate()).padStart(2,'0')+'-'+mo[todayDate.getMonth()]+'-'+String(todayDate.getFullYear()).slice(-2);})();
     document.getElementById('bw-ct').textContent='Showing '+filtered.length+' resource'+(filtered.length!==1?'s':'')+(bwT===0?'':' with >='+(bwT===100?99:bwT)+'% free bandwidth')+' - '+(bwEngType==='sow'?'SOW mappings':'Internal utilization')+(bwAsOf?' (as of today, '+todayLabel+')':'')+(searchVal?' - matching "'+searchVal+'"':'');
     filtered.sort(function(a,b){if(b.bwFree!==a.bwFree)return b.bwFree-a.bwFree;return String(a.emp||'').localeCompare(String(b.emp||''),undefined,{sensitivity:'base'});}).forEach(function(e){
       var bw=pct(e.bwFree), bc=bw>=75?'#639922':bw>=30?'#BA7517':'#E24B4A', tc=bw>=75?'#27500A':bw>=30?'#633806':'#791F1F', card=document.createElement('div');
@@ -19278,7 +19427,7 @@ function deleteAllProjects(){
   window.selEmp=function(empName,row){
     document.querySelectorAll('.emp-row').forEach(function(r){r.classList.remove('sel');});if(row)row.classList.add('sel');
     var fd=typeof getFD==='function'?getFD():[], info=empInfo(empName,fd), title=document.getElementById('emp-dp-title');if(title)title.innerHTML=h(empName)+' - Projects &amp; Allocation (selected period)';
-    var meta=document.getElementById('emp-dp-meta');if(meta){meta.className='emp-detail-meta';meta.innerHTML='<div>Date of Joining: <strong>'+h(fmtD(info.doj))+'</strong></div><div>Payrate: <strong>$'+h(info.billRate||'0')+'/hr</strong></div><div>Email ID: <strong>'+h(info.email||'-')+'</strong></div>';}
+    var meta=document.getElementById('emp-dp-meta');if(meta){meta.className='emp-detail-meta';meta.innerHTML='<div>Date of Joining: <strong>'+h(fmtD(info.doj))+'</strong></div><div>Payrate: <strong>'+h(financeFmtRate(info.billRate||''))+'</strong></div><div>Email ID: <strong>'+h(info.email||'-')+'</strong></div>';}
     var names=new Set();utilRows(empName).forEach(function(d){names.add(d.project);});Object.keys(PROJECTS||{}).forEach(function(p){if(!projectAllowed(p))return;(PROJECTS[p].engagements||[]).forEach(function(e){if(e.name===empName&&overlapsMonths(e.start||PROJECTS[p].start,e.end||PROJECTS[p].end,activeMonths()))names.add(p);});});
     var cont=document.getElementById('emp-dp-projects');if(!cont)return;var colors=[['#DBEAFE','#1E40AF'],['#D1FAE5','#065F46'],['#FEF3C7','#92400E'],['#EDE9FE','#4C1D95'],['#CFFAFE','#164E63']],arr=Array.from(names).sort();
     cont.innerHTML=arr.length?arr.map(function(project,i){var p=PROJECTS[project]||{}, rows=engagementRows(project,empName,null), first=rows[0]||{}, internal=internalPct(empName,project), sow=sowPct(project,empName), br=(rows.find(function(e){return e.billRate;})||{}).billRate||'', c=colors[i%colors.length], billing=p.billing?(/time\s*&?\s*material/i.test(p.billing)?'T&M':p.billing):'-';var brTag=br?'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:#FEF9C3;color:#854D0E;border:1px solid #FDE047;white-space:nowrap">BR: $'+h(br)+'/hr</span>':'';var chips='<span class="proj-alloc-chip internal">Internal: '+internal+'%</span><span class="proj-alloc-chip sow">SOW: '+Math.round(sow)+'%</span>'+(brTag?' '+brTag:'');return '<div class="tcard"><div class="av" style="background:'+c[0]+';color:'+c[1]+'">'+h(initials(project))+'</div><div class="ti"><div class="tn">'+h(project)+'</div><div style="font-size:11px;color:#6b7280;font-weight:500;margin-bottom:4px">'+h(billing)+'</div><div class="tr2" style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 8px;align-items:center">'+chips+'</div><div class="tr2"><span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;display:inline-block;min-width:60px">Project</span>'+h(fmtD(p.start))+' – '+h(fmtD(p.end))+'</div><div class="tr2"><span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;display:inline-block;min-width:60px">Resource</span>'+h(fmtD(first.start||p.start))+' – '+h(fmtD(first.end||p.end))+'</div></div></div>';}).join(''):'<div style="font-size:12px;color:var(--tx3);padding:8px">No project allocation data in this period.</div>';
@@ -19308,7 +19457,7 @@ function deleteAllProjects(){
       } else {
         periodRows='<div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap"><span class="proj-date-chip">'+h(fmtD(p.start))+' &rarr; '+h(fmtD(p.end)||'Active')+'</span>'+internalBadge+'</div>';
       }
-      return '<div class="proj-team-card"><div class="proj-avatar" style="background:#DBEAFE;color:#1E40AF">'+h(initials(m.name))+'</div><div><div class="proj-member-name">'+h(m.name)+'</div><div class="proj-member-role">'+h(m.role)+'</div>'+periodRows+(m.br?'<div class="proj-member-role">Bill rate: <strong>$'+h(m.br)+'/hr</strong></div>':'')+'</div></div>';
+      return '<div class="proj-team-card"><div class="proj-avatar" style="background:#DBEAFE;color:#1E40AF">'+h(initials(m.name))+'</div><div><div class="proj-member-name">'+h(m.name)+'</div><div class="proj-member-role">'+h(m.role)+'</div>'+periodRows+(m.br?'<div class="proj-member-role">Bill rate: <strong>'+financeFmtRate(m.br)+'</strong></div>':'')+'</div></div>';
     }).join(''):'<div class="proj-empty-team">No team members found for this project.</div>';
   };
 
@@ -19539,7 +19688,7 @@ function deleteAllProjects(){
     });
     return found;
   }
-  function billRateLabel(v){return '$'+esc(v||'0')+'/hr';}
+  function billRateLabel(v){if(!window.financeDataVisible)return '****';return '$'+esc(v||'0')+'/hr';}
 
   function fullMoLabel(m){
     var p=String(m||'').split('-')[0];
@@ -19694,7 +19843,7 @@ function deleteAllProjects(){
       } else {
         periodRows='<div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap"><span class="proj-date-chip">'+esc(fmtD(p.start))+' &rarr; '+esc(fmtD(p.end)||'Active')+'</span>'+internalBadge+'</div>';
       }
-      return '<div class="proj-team-card"><div class="proj-avatar" style="background:#DBEAFE;color:#1E40AF">'+esc(ini)+'</div><div><div class="proj-member-name">'+esc(name)+'</div><div class="proj-member-role">'+esc(role)+'</div>'+periodRows+(br?'<div class="proj-member-role">Bill rate: <strong>$'+esc(br)+'/hr</strong></div>':'')+'</div></div>';
+      return '<div class="proj-team-card"><div class="proj-avatar" style="background:#DBEAFE;color:#1E40AF">'+esc(ini)+'</div><div><div class="proj-member-name">'+esc(name)+'</div><div class="proj-member-role">'+esc(role)+'</div>'+periodRows+(br?'<div class="proj-member-role">Bill rate: <strong>'+financeFmtRate(br)+'</strong></div>':'')+'</div></div>';
     }).join('')||'<div class="proj-empty-team">No team members found for this project.</div>';
   };
 
@@ -20679,8 +20828,7 @@ function downloadEmpExcel() {
   }
 
   function fmtUSD(v){
-    if(!v||isNaN(v))return '–';
-    return '$'+Math.round(v).toLocaleString();
+    return financeFmtCurrency(v);
   }
   function fmtDate(d){
     if(!d)return '–';
@@ -20745,7 +20893,7 @@ function downloadEmpExcel() {
         kpiCard('t',dollarIcon,revLabel,totalCogs>0?fmtUSD(totalCogs):'–',esc(buSuffix))+
         kpiCard('b',projIcon,'Active Projects',activeProjectsCount,'With active resources')+
         kpiCard('p',peopleIcon,'Active Resources',totalActiveResources,'Across '+esc(buSuffix))+
-        kpiCard('a',rateIcon,'Avg Bill Rate',avgBillRate>0?('$'+avgBillRate.toFixed(0)+'/hr'):'–','Active resources')+
+        kpiCard('a',rateIcon,'Avg Bill Rate',avgBillRate>0?financeFmtRate(avgBillRate):'–','Active resources')+
       '</div>';
   }
 
@@ -20816,7 +20964,7 @@ function downloadEmpExcel() {
         +'<td style="font-size:10px">'+esc(fmtDate(r.start))+'</td>'
         +'<td style="font-size:10px">'+esc(fmtDate(r.end))+'</td>'
         +'<td style="text-align:center">'+esc(r.alloc)+'%</td>'
-        +'<td style="text-align:center;font-weight:600;color:var(--blue)">'+(r.billRate?'$'+r.billRate+'/hr':'–')+'</td>'
+        +'<td style="text-align:center;font-weight:600;color:var(--blue)">'+(r.billRate?financeFmtRate(r.billRate):'–')+'</td>'
         +'<td style="text-align:right;font-weight:700;color:var(--teal)">'+(r.cogs>0?fmtUSD(r.cogs):'–')+'</td>'
         +'<td style="text-align:center">'+statusPill(r.status)+'</td>'
         +'</tr>';
@@ -20839,7 +20987,7 @@ function downloadEmpExcel() {
           +'</div>'
           +'<div style="text-align:center">'
             +'<div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em">Avg Rate</div>'
-            +'<div style="font-size:14px;font-weight:800;color:var(--blue)">'+(avgBillRate>0?'$'+avgBillRate.toFixed(0)+'/hr':'–')+'</div>'
+            +'<div style="font-size:14px;font-weight:800;color:var(--blue)">'+(avgBillRate>0?financeFmtRate(avgBillRate):'–')+'</div>'
           +'</div>'
           +'<div style="text-align:center">'
             +'<div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em">Monthly COGS</div>'
@@ -21233,6 +21381,41 @@ function downloadEmpExcel() {
   }
 
   initFirebase(20); // retry for up to ~6s while the SDK <script> tags finish loading
+})();
+</script>
+
+<!-- ===== FINANCE DATA MASKING SAFETY NET =====
+     The dashboard re-renders many views (Resources, Projects, Business Overview,
+     hiring pipeline, etc.) via lots of small functions. Rather than relying on every
+     single one of them to remember to check the finance toggle, this observer
+     watches the whole page for changes and re-applies the Bill Rate / Pay Rate /
+     totals mask everywhere EXCEPT the Edit Data tab, whenever the toggle is set to
+     hide finance data. This guarantees the mask holds no matter which part of the
+     app just re-rendered. ==================================================== -->
+<script id="finance-mask-safety-net">
+(function(){
+  var maskTimer=null;
+  function scheduleMask(){
+    clearTimeout(maskTimer);
+    maskTimer=setTimeout(function(){
+      if(typeof window.applyFinanceMaskToVisibleText==='function'){
+        window.applyFinanceMaskToVisibleText(document);
+      }
+    },120);
+  }
+  function start(){
+    if(!document.body) return;
+    try{
+      var obs=new MutationObserver(function(){ scheduleMask(); });
+      obs.observe(document.body,{childList:true,subtree:true,characterData:true});
+    }catch(e){}
+    scheduleMask();
+  }
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',start);
+  } else {
+    start();
+  }
 })();
 </script>
 
